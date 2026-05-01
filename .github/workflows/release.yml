@@ -1,0 +1,165 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            os_and_arch: macos-arm64
+            bundles: dmg
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            os_and_arch: macos-amd64
+            bundles: dmg
+
+          # Linux
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            os_and_arch: linux-amd64
+            bundles: deb,appimage
+          - platform: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            os_and_arch: linux-arm64
+            bundles: deb,appimage
+
+          # Windows
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            os_and_arch: windows-amd64
+            bundles: nsis
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract tag
+        id: tag
+        shell: bash
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Linux system deps
+        if: startsWith(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.target }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install JS deps
+        run: bun install --frozen-lockfile
+
+      - name: Build frontend
+        run: bun run build
+
+      - name: Build Tauri app
+        run: |
+          cargo install tauri-cli --version "^2" --locked
+          cargo tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      # ── Collect & rename artifacts ─────────────────────
+      - name: Collect artifacts (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          OSA="${{ matrix.os_and_arch }}"
+          OUT="artifacts"
+          mkdir -p "$OUT"
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+
+          shopt -s nullglob
+          # macOS dmg
+          for f in "$BUNDLE_DIR"/dmg/*.dmg; do
+            cp "$f" "$OUT/rszip-${TAG}-${OSA}.dmg"
+          done
+          # Linux deb
+          for f in "$BUNDLE_DIR"/deb/*.deb; do
+            cp "$f" "$OUT/rszip-${TAG}-${OSA}.deb"
+          done
+          # Linux AppImage
+          for f in "$BUNDLE_DIR"/appimage/*.AppImage; do
+            cp "$f" "$OUT/rszip-${TAG}-${OSA}.AppImage"
+          done
+
+          ls -la "$OUT"
+
+      - name: Collect artifacts (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $Tag = "${{ steps.tag.outputs.tag }}"
+          $Osa = "${{ matrix.os_and_arch }}"
+          $Out = "artifacts"
+          New-Item -ItemType Directory -Force -Path $Out | Out-Null
+          $Bundle = "src-tauri/target/${{ matrix.target }}/release/bundle"
+
+          Get-ChildItem "$Bundle/nsis/*.exe" -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item $_.FullName "$Out/rszip-$Tag-$Osa.exe"
+          }
+
+          Get-ChildItem $Out
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rszip-${{ matrix.os_and_arch }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: dist/*

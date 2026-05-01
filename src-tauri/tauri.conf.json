@@ -1,0 +1,74 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "rszip",
+  "version": "0.1.0",
+  "identifier": "org.dreamcat.rszip",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "rszip",
+        "width": 1000,
+        "height": 700,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["zip"],
+        "name": "ZIP Archive",
+        "role": "Editor",
+        "mimeType": "application/zip"
+      },
+      {
+        "ext": ["7z"],
+        "name": "7-Zip Archive",
+        "role": "Editor",
+        "mimeType": "application/x-7z-compressed"
+      },
+      {
+        "ext": ["rar"],
+        "name": "RAR Archive",
+        "role": "Editor",
+        "mimeType": "application/vnd.rar"
+      },
+      {
+        "ext": ["gz", "tgz", "tar.gz"],
+        "name": "Gzip Archive",
+        "role": "Editor",
+        "mimeType": "application/gzip"
+      },
+      {
+        "ext": ["bz2", "tbz2", "tar.bz2"],
+        "name": "Bzip2 Archive",
+        "role": "Editor",
+        "mimeType": "application/x-bzip2"
+      },
+      {
+        "ext": ["xz", "txz", "tar.xz"],
+        "name": "XZ Archive",
+        "role": "Editor",
+        "mimeType": "application/x-xz"
+      }
+    ]
+  }
+}
